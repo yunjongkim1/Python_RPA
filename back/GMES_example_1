@@ -1,0 +1,185 @@
+import os
+import time
+import win32com.client as win32
+from pathlib import Path
+
+from selenium import webdriver
+from selenium.webdriver import Keys
+from selenium.webdriver.chrome.service import Service as ChromeService
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as ec
+from webdriver_manager.chrome import ChromeDriverManager
+
+URL = "https://gmes30-mcaal.hlmando.com/app/view.jsp?w2xPath=/home/login.xml"  #GA , AL 에 맞게 접속 URL 수정
+USER_ID = "3731666"  #본인 아이디로 수정
+USER_PW = "Rlaehdgus88*"  #본인 비밀번호로 수정
+DOWNLOAD_DIR = r"C:\Users\Dong Hyun Kim\Downloads"  # 다운로드 폴더 실제 경로로 수정
+downloaded_files = []
+
+
+def switch_to_frame_with_element(driver, by, locator, timeout=10):
+    """주어진 locator를 포함한 iframe을 찾아 그 iframe으로 switch."""
+    wait = WebDriverWait(driver, timeout)
+
+    driver.switch_to.default_content()
+    iframes = driver.find_elements(By.TAG_NAME, "iframe")
+    print("iframe 개수:", len(iframes))
+
+    for idx, frame in enumerate(iframes):
+        driver.switch_to.default_content()
+        driver.switch_to.frame(frame)
+        try:
+            wait.until(ec.presence_of_element_located((by, locator)))
+            print(f">>> 이 프레임에서 {locator} 찾음! index = {idx}")
+            return idx  # 필요한 경우 인덱스를 저장해서 재사용 가능
+        except Exception:
+            continue
+
+    raise Exception(f"어느 iframe에서도 요소 {locator} 를 찾지 못했습니다.")
+
+
+def find_in_any_frame(driver, by, locator, timeout=10):
+    """여러 iframe 중 해당 요소를 포함한 프레임을 찾아 진입 후 요소 반환."""
+    driver.switch_to.default_content()
+    iframes = driver.find_elements(By.TAG_NAME, "iframe")
+    wait = WebDriverWait(driver, timeout)
+
+    for frame in iframes:
+        driver.switch_to.default_content()
+        driver.switch_to.frame(frame)
+        try:
+            elem = wait.until(ec.presence_of_element_located((by, locator)))
+            return elem
+        except Exception:
+            continue
+
+    raise Exception(f"어느 iframe에서도 요소 {locator} 를 찾지 못했습니다.")
+
+
+def wait_for_new_file(download_dir, timeout=60):
+    """현재 시점 이후 새로 생긴 파일이 나타날 때까지 대기."""
+    folder = Path(download_dir)
+    before = {f.name for f in folder.glob("*")}
+
+    for _ in range(timeout):
+        time.sleep(1)
+        after = {f.name for f in folder.glob("*")}
+        new_files = after - before
+        # .crdownload / .part 같은 임시 파일은 제외
+        new_files = {f for f in new_files if not f.endswith((".crdownload", ".part"))}
+        if new_files:
+            # 가장 최근 파일 하나만 리턴
+            latest = max(new_files, key=lambda n: (folder / n).stat().st_mtime)
+            return str(folder / latest)
+
+    raise TimeoutError("다운로드 파일을 찾지 못했습니다.")
+
+
+def send_mail_with_attachments(attachment_paths):
+    outlook = win32.Dispatch("Outlook.Application")
+    mail = outlook.CreateItem(0)
+
+    mail.To = "dongh.kim@hlcompany.com"  #To 정보
+    mail.CC = "danny.hwang@hlcompany.com"  #Cc 정보
+    mail.Subject = "GMES 재고 엑셀 자동전송"  #이메일 제목 수정하려면 여기 수정
+    mail.Body = "Inventory Status Display 재고 조회 자동 전송\n 전 Plant\n RPA 테스트 완료\n"  #이메일 내용 수정하려면 여기 수정
+
+    for path in attachment_paths:
+        mail.Attachments.Add(path)
+    mail.Send()
+
+
+def main():
+    os.environ["WDM_LOCAL"] = "1"
+
+    service = ChromeService(ChromeDriverManager().install())
+    driver = webdriver.Chrome(service=service)
+
+    try:
+        driver.get(URL)
+        driver.implicitly_wait(10)
+
+        # 로그인
+        id_input = driver.find_element(By.ID, "txtUSER_ID")
+        pw_input = driver.find_element(By.ID, "txtPWD")
+
+        id_input.clear()
+        id_input.send_keys(USER_ID)
+        pw_input.clear()
+        pw_input.send_keys(USER_PW)
+
+        login_btn = driver.find_element(By.ID, "btnLogin")
+        login_btn.click()
+
+        wait = WebDriverWait(driver, 10)
+
+        # 네비 버튼 : SCL 카테고리 클릭
+        nav_btn = wait.until(ec.element_to_be_clickable((By.ID, "btn_nav02")))
+        nav_btn.click()
+
+        # 중메뉴 : Inventory Mgmt. 클릭
+        mid_menu = wait.until(ec.presence_of_element_located((By.ID, "ui-id-11")))
+        driver.execute_script("arguments[0].click();", mid_menu)
+
+        # 실제 타겟 메뉴 : Inventory Status Display 클릭
+        target_menu = wait.until(ec.element_to_be_clickable((By.ID, "ui-id-18")))
+        target_menu.click()
+
+        # ERP QTY 체크박스 체크하기
+        erp_qty = find_in_any_frame(driver, By.ID, "chkRFC_input_0")
+        erp_qty.click()
+
+        # 콤보박스 클릭해서 드롭다운 열기
+        combo = find_in_any_frame(driver, By.ID, "cboSearchPlant_button")
+        combo.click()
+        time.sleep(0.3)
+
+        # 드롭다운 항목 전체 개수 찾기
+        options = driver.find_elements(
+            By.XPATH, "//td[starts-with(@id, 'cboSearchPlant_itemTable_')]"
+        )
+        option_count = len(options)
+        opt = options[option_count - 1]
+        opt.click()
+
+        for i in range(option_count):
+            combo = find_in_any_frame(driver, By.ID, "cboSearchPlant_button")
+            combo.click()
+            time.sleep(0.3)
+
+            options = driver.find_elements(
+                By.XPATH, "//td[starts-with(@id, 'cboSearchPlant_itemTable_')]"
+            )
+            opt = options[i]
+            print(i, opt.get_attribute("id"), " / text =", opt.text)
+            opt.click()
+
+            btn_inquiry = find_in_any_frame(driver, By.ID, "btnMainSearch")
+            btn_inquiry.click()
+
+            rows = wait.until(
+                ec.presence_of_all_elements_located(
+                    (By.CSS_SELECTOR, "#grid1_cell_0_0")
+                )
+            )
+
+            btn_download_excel = find_in_any_frame(driver, By.ID, "btnGrid1ExcelDownload")
+            btn_download_excel.click()
+
+            time.sleep(0.5)
+            body = driver.find_element(By.TAG_NAME, "body")
+            body.send_keys(Keys.ENTER)
+
+            # 실제 파일이 다운로드될 때까지 대기
+            excel_path = wait_for_new_file(DOWNLOAD_DIR, timeout=120)
+            downloaded_files.append(excel_path)
+
+        send_mail_with_attachments(downloaded_files)
+
+    finally:
+        driver.quit()
+
+
+if __name__ == "__main__":
+    main()

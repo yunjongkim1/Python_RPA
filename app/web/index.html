@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>HL Mando API Portal</title>
+    <style>
+        body { 
+            font-family: 'Malgun Gothic', sans-serif; 
+            background: #f4f7f9; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            padding: 0px; 
+        }
+        h1 { color: #0054a6; margin-bottom: 40px; }
+
+        /* 수정된 부분 */
+        .grid { 
+            display: grid; 
+            /* 화면 크기에 맞춰 카드를 자동으로 채움 (최소 280px 보장) */
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); 
+            gap: 20px; 
+            width: 98%;         /* 고정 너비 대신 비율 사용 */
+            max-width: 4800px;  /* 전체 최대 너비 확장 */
+        }
+
+        .card { 
+            background: white; 
+            padding: 30px; 
+            border-radius: 10px; 
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1); 
+            cursor: pointer; 
+            transition: 0.3s; 
+            text-align: center; 
+            border: 1px solid #eee; 
+            /* 카드가 너무 늘어나는 것을 방지하기 위해 최소 높이 설정 가능 */
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        .card:hover { 
+            transform: translateY(-5px); 
+            border-color: #0054a6; 
+        }
+        .card h3 { 
+            margin: 0; 
+            color: #333; 
+        }
+        .card p { 
+            color: #666; 
+            font-size: 0.9rem; 
+            margin-bottom: 15px;
+        }
+        
+    </style>
+    <script>
+        async function runDailyReportAutoMail() {
+            const emailInput = document.getElementById('targetEmail');
+            const email = emailInput.value.trim();
+            const logContainer = document.getElementById('log-container');
+            
+            // 로그창 초기화 및 표시
+            logContainer.innerHTML = "Connecting to server...<br>";
+            logContainer.style.display = "block";
+
+            // SSE 연결
+            const eventSource = new EventSource(`/run/daily_report_automail/stream?extra_email=${encodeURIComponent(email)}`);
+
+            eventSource.onmessage = function(event) {
+                // 새로운 로그 한 줄 추가
+                const newLog = document.createElement('div');
+                newLog.textContent = event.data;
+                logContainer.appendChild(newLog);
+                
+                // 자동 스크롤
+                logContainer.scrollTop = logContainer.scrollHeight;
+
+                // 종료 조건 확인
+                if (event.data.includes("🏁 Done") || event.data.includes("❌ Error")) {
+                    eventSource.close();
+                    alert("Process Finished.");
+                }
+            };
+
+            eventSource.onerror = function() {
+                const errLog = document.createElement('div');
+                errLog.style.color = "red";
+                errLog.textContent = "⚠️ Connection lost or finished.";
+                logContainer.appendChild(errLog);
+                eventSource.close();
+            };
+        }
+    </script>
+</head>
+<body>
+    <h1>HL Mando RPA Service Portal</h1>
+    <div class="grid">
+        <div class="card" onclick="location.href='/view/daily_report'">
+            <h3>Daily Production Report</h3>
+            <p>Directly view the daily production report from the site.</p>
+        </div>
+        <div class="card">
+            <h3>Daily Report Auto Mail Dispatch</h3>
+            <p>Send Report by email to the person in charge.</p>
+            <div class="input-group" style="display: flex;">
+                <input type="email" id="targetEmail" placeholder="Enter additional recipient email" style="width: 70%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                <button onclick="runDailyReportAutoMail()" style="margin-left: 3px; width: 30%; padding: 10px; background-color: #0054a6; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                    Send
+                </button>
+            </div>
+            <div id="log-container" style="margin-top:15px; background:#222; color:#0f0; padding:10px; border-radius:5px; font-family:monospace; font-size:12px; height:150px; overflow-y:auto; text-align:left; display:none;">
+            </div>
+        </div>
+        <div class="card" style="opacity:0.5; cursor:default;">
+            <h3>Another Service</h3>
+            <p>준비 중입니다.1</p>
+        </div>
+        <div class="card" style="opacity:0.5; cursor:default;">
+            <h3>Another Service</h3>
+            <p>준비 중입니다.2</p>
+        </div>
+        <div class="card" style="opacity:0.5; cursor:default;">
+            <h3>Another Service</h3>
+            <p>준비 중입니다.3</p>
+        </div>
+        <div class="card" style="opacity:0.5; cursor:default;">
+            <h3>Another Service</h3>
+            <p>준비 중입니다.4</p>
+        </div>
+        <div class="card" style="opacity:0.5; cursor:default;">
+            <h3>Another Service</h3>
+            <p>준비 중입니다.5</p>
+        </div>
+        <div class="card" style="opacity:0.5; cursor:default;">
+            <h3>Another Service</h3>
+            <p>준비 중입니다.6</p>
+        </div>
+        <div class="card" style="opacity:0.5; cursor:default;">
+            <h3>Another Service</h3>
+            <p>준비 중입니다.7</p>
+        </div>
+        <div class="card" style="opacity:0.5; cursor:default;">
+            <h3>Another Service</h3>
+            <p>준비 중입니다.8</p>
+        </div>
+    </div>
+</body>
+</html>
