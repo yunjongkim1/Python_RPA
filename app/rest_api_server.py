@@ -51,50 +51,48 @@ app.add_middleware(
 # --- [Scheduler] 스케줄러 설정 ---
 scheduler = BackgroundScheduler(daemon=True)
 
-def setup_automation_schedule(env_key, script_path, job_id_prefix):
+def setup_automation_schedule():
     """
-    .env의 스케줄 설정을 읽어와서 APScheduler에 등록합니다.
-    형식: NAME:DAYS:TIME (예: C:tue-sat:07:30)
+    .env의 JOB_SCHEDULES를 읽어 APScheduler에 등록합니다.
+    형식: 이름:요일:시:분:스크립트경로 (예: A:mon-fri:15:31:rpa_tasks/daily_mail/daily_printout_automail.py)
+    새 Job 추가 시 .env의 JOB_SCHEDULES에 ,구분자로 항목 추가. EXE 재빌드 불필요.
     """
-    raw_schedules = os.getenv(env_key, "")
+    raw_schedules = os.getenv("JOB_SCHEDULES", "")
     if not raw_schedules:
+        print("   ⚠️ JOB_SCHEDULES 환경변수가 설정되지 않았습니다.")
         return
         
     for item in raw_schedules.split(","):
         try:
-            # 최대 2번만 나눠서 [이름, 요일, 시간] 3개로 만듭니다.
-            parts = item.strip().split(":", 2) 
-            if len(parts) != 3:
-                print(f"   ⚠️ 형식 오류 (시프트:요일:시간): {item}")
+            # 최대 4번 split → [이름, 요일, 시, 분, 스크립트경로] 5개
+            parts = item.strip().split(":", 4)
+            if len(parts) != 5:
+                print(f"   ⚠️ 형식 오류 (이름:요일:시:분:스크립트경로): {item}")
                 continue
 
-            name, days, time_val = parts
-            h, m = time_val.split(":")
-            
-            # 중복 실행 방지 로직이 포함된 subprocess 실행
-            # n=name은 람다 캡처 문제를 피하기 위해 사용
+            name, days, h, m, script_path = parts
+
             scheduler.add_job(
-                lambda n=name: subprocess.Popen(["python", script_path, n]),
+                lambda n=name, sp=script_path: subprocess.Popen(["python", sp, n]),
                 trigger=CronTrigger(
-                    day_of_week=days, 
-                    hour=int(h), 
-                    minute=int(m), 
+                    day_of_week=days,
+                    hour=int(h),
+                    minute=int(m),
                     timezone=os.getenv("APP_TIMEZONE", "America/Chicago")
                 ),
-                id=f"{job_id_prefix}_{name}",
+                id=f"JOB_{name}",
                 replace_existing=True,
                 misfire_grace_time=1800     #1800초=30분 동안 지연되어도 실행함
             )
-            print(f"   [Registered] {job_id_prefix} - Shift {name}: {days} {h}:{m}")
+            print(f"   [Registered] {name}: {days} {h}:{m} -> {script_path}")
         except Exception as e:
-            print(f"   ⚠️ {env_key} 스케줄 형식 오류 ({item}): {e}")
+            print(f"   ⚠️ JOB_SCHEDULES 형식 오류 ({item}): {e}")
 
 # 서버 시작 이벤트 수정
 @app.on_event("startup")
 def start_all_schedules():
-    # 기존 자동화 스케줄 등록
-    setup_automation_schedule("DAY_RPT_AUTO_SCHEDULES", "rpa_tasks/daily_mail/daily_printout_automail.py", "RPT")
-    setup_automation_schedule("DB_SINK_AUTO_SCHEDULES", "rpa_tasks/db_sink/db_sink_prod_to_dev.py", "SINK")
+    # .env의 JOB_SCHEDULES에서 동적으로 스케줄 등록
+    setup_automation_schedule()
 
     if not scheduler.running:
         scheduler.start()

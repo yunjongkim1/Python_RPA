@@ -43,9 +43,8 @@ def log(message):
     logger = logging.getLogger("RPA")
     
     if not logger.hasHandlers():
-        # 1. 범용 경로 설정 (사용자 계정 자동 인식)
-        download_path = os.path.join(os.environ['USERPROFILE'], 'Downloads')
-        log_dir = os.path.join(download_path, "logs")
+        # 1. 로그 경로 설정 (.env의 LOG_DIR 우선, 없으면 USERPROFILE\Downloads\logs)
+        log_dir = os.getenv("LOG_DIR") or os.path.join(os.environ['USERPROFILE'], 'Downloads', 'logs')
         os.makedirs(log_dir, exist_ok=True)
         
         # 2. 실행파일명_날짜.log 생성
