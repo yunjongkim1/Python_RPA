@@ -1,4 +1,5 @@
 @echo off
+chcp 65001 >nul
 title Mando RPA API Server
 echo ============================================
 echo   Starting Mando RPA API Portal Server...
@@ -11,7 +12,7 @@ cd /d "%~dp0"
 set PYTHONPATH=%~dp0
 
 :: 3. 서버 실행
-python app/rest_api_server.py
+python app/web/rest_api_server.py
 
 if %errorlevel% neq 0 (
     echo.

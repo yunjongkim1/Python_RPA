@@ -1,7 +1,12 @@
 # 환경변수 (민감정보 포함)
 .env
+rpa_tasks/dailyprintout/dailyprintout.env
+rpa_tasks/transportation/.env
+rpa_tasks/lpa_5s/lpa_5s_combined_sender.env
+app/web/rest_api.env
 
 # Python 캐시
+**/__pycache__/
 __pycache__/
 *.py[cod]
 *.pyo
@@ -17,6 +22,13 @@ Logs/
 
 # 다운로드 임시 파일
 Download/
+
+# 산출물 (RPA 출력 파일)
+output/
+*.xls
+*.xlsx
+*.exe
+*.zip
 
 # IDE
 .vscode/

@@ -5,21 +5,31 @@ import win32com.client as win32
 import sys
 import logging
 
+# EXE 실행 시 stdout이 cp1252로 설정되는 문제 방지
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+if hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
 import smtplib
 from email.message import EmailMessage
 
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
+try:
+    from selenium.webdriver.common.by import By
+    from selenium.webdriver.support.ui import WebDriverWait
+    from selenium.webdriver.support import expected_conditions as EC
+except ImportError:
+    By = WebDriverWait = EC = None
 from datetime import datetime
 
 from dotenv import load_dotenv
+from pathlib import Path
 
-# .env 파일 로드
-load_dotenv()
+# dailyprintout.env 로드 (rpa_tasks/dailyprintout 폴더 기준)
+load_dotenv(Path(__file__).parent.parent / 'rpa_tasks' / 'dailyprintout' / 'dailyprintout.env')
 
 _mail_log_buffer = []   # 전역 변수로 로그 메시지를 담을 리스트 선언
 

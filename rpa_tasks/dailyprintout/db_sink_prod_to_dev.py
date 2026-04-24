@@ -7,16 +7,22 @@ import os
 from pathlib import Path
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
+from pathlib import Path
 
-# .env 로드
-load_dotenv()
+# dailyprintout.env 로드
+# frozen(EXE) 실행 시: EXE 옆 dailyprintout.env 사용
+# 개발 실행 시: 같은 폴더 dailyprintout.env 사용
+if getattr(sys, 'frozen', False):
+    _env_path = Path(sys.executable).parent / 'dailyprintout.env'
+    _project_root = str(Path(sys.executable).parent.parent.parent)
+else:
+    _env_path = Path(__file__).parent / 'dailyprintout.env'
+    _project_root = os.getenv("PROJECT_ROOT", str(Path(__file__).parent.parent.parent))
+load_dotenv(_env_path)
 
-# exec USP_COPY_INV_FROM_PROD 'G1RI02%1'
-
-# 프로젝트 루트 경로를 sys.path에 추가하여 모듈 임포트 가능하게 설정
-project_root = os.getenv("PROJECT_ROOT")
-if project_root not in sys.path:
-        sys.path.insert(0, project_root)
+# 프로젝트 루트 경로를 sys.path에 추가으켜서 core/ 모듈 임포트 가능게 설정
+if _project_root not in sys.path:
+    sys.path.insert(0, _project_root)
 
 # core 모듈에서 공통 함수와 로깅 기능 가져오기
 from core.common_fn import log, send_mail_with_attachments, get_log_for_mail

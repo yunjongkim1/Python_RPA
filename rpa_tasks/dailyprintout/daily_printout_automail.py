@@ -6,17 +6,25 @@ import sys  # 명령줄 인자를 받기 위해 추가.
 
 from datetime import datetime, timedelta
 from dotenv import load_dotenv  # 추가
+from pathlib import Path
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
-# .env 로드
-load_dotenv()
+# dailyprintout.env 로드
+# frozen(EXE) 실행 시: EXE 옆 dailyprintout.env 사용
+# 개발 실행 시: 같은 폴더 dailyprintout.env 사용
+if getattr(sys, 'frozen', False):
+    _env_path = Path(sys.executable).parent / 'dailyprintout.env'
+    _project_root = str(Path(sys.executable).parent.parent.parent)
+else:
+    _env_path = Path(__file__).parent / 'dailyprintout.env'
+    _project_root = os.getenv("PROJECT_ROOT", str(Path(__file__).parent.parent.parent))
+load_dotenv(_env_path)
 
-# 프로젝트 루트 경로를 sys.path에 추가하여 모듈 임포트 가능하게 설정
-project_root = os.getenv("PROJECT_ROOT")
-if project_root not in sys.path:
-        sys.path.insert(0, project_root)
+# 프로젝트 루트 경로를 sys.path에 추가으켜서 core/ 모듈 임포트 가능게 설정
+if _project_root not in sys.path:
+    sys.path.insert(0, _project_root)
 
 # core 모듈에서 공통 함수와 로깅 기능 가져오기
 from core.browser_config import win_open
@@ -133,8 +141,6 @@ def main():
             if extra_email not in mail_to:
                 mail_to.append(extra_email)
                 log(f"➕ 추가 수신자 포함됨: {extra_email}")
-        else:
-            log(f"⚠️ 전달된 인자가 올바른 이메일 형식이 아닙니다: {extra_email}")
 
     try:
         #1. 브라우저 실행 및 메뉴 이동
