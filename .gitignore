@@ -1,0 +1,39 @@
+# 환경변수 (민감정보 포함)
+.env
+rpa_tasks/dailyprintout/dailyprintout.env
+rpa_tasks/transportation/.env
+rpa_tasks/lpa_5s/lpa_5s_combined_sender.env
+app/web/rpa_server.env
+
+# Python 캐시
+**/__pycache__/
+__pycache__/
+*.py[cod]
+*.pyo
+
+# PyInstaller 산출물 (Option A로 전환 시 사용)
+build/
+dist/
+*.spec
+
+# 로그
+Logs/
+*.log
+
+# 다운로드 임시 파일
+Download/
+
+# 산출물 (RPA 출력 파일)
+output/
+*.xls
+*.xlsx
+*.exe
+*.zip
+
+# IDE
+.vscode/
+.idea/
+
+# 가상환경
+venv/
+.venv/

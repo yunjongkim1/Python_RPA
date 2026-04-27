@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>HL Mando API Portal</title>
+    <style>
+        body { 
+            font-family: 'Malgun Gothic', sans-serif; 
+            background: #f4f7f9; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            padding: 0px; 
+        }
+        h1 { color: #0054a6; margin-bottom: 10px; }
+        .server-badge {
+            display: inline-block;
+            background: #e8f0fe;
+            color: #0054a6;
+            border: 1px solid #b0c4e8;
+            border-radius: 20px;
+            padding: 4px 16px;
+            font-size: 0.85rem;
+            margin-bottom: 28px;
+            font-weight: 600;
+            letter-spacing: 0.02em;
+        }
+        .server-badge span { color: #888; font-weight: 400; margin-left: 6px; font-size: 0.8rem; }
+
+        /* 수정된 부분 */
+        .grid { 
+            display: grid; 
+            /* 화면 크기에 맞춰 카드를 자동으로 채움 (최소 280px 보장) */
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); 
+            gap: 20px; 
+            width: 98%;         /* 고정 너비 대신 비율 사용 */
+            max-width: 4800px;  /* 전체 최대 너비 확장 */
+        }
+
+        .card { 
+            background: white; 
+            padding: 30px; 
+            border-radius: 10px; 
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1); 
+            cursor: pointer; 
+            transition: 0.3s; 
+            text-align: center; 
+            border: 1px solid #eee; 
+            /* 카드가 너무 늘어나는 것을 방지하기 위해 최소 높이 설정 가능 */
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        .card:hover { 
+            transform: translateY(-5px); 
+            border-color: #0054a6; 
+        }
+        .card h3 { 
+            margin: 0; 
+            color: #333; 
+        }
+        .card p { 
+            color: #666; 
+            font-size: 0.9rem; 
+            margin-bottom: 15px;
+        }
+
+        /* 모니터링 패널 */
+        .monitor-panel {
+            width: 98%;
+            max-width: 4800px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            border: 1px solid #eee;
+            margin-bottom: 24px;
+            overflow: hidden;
+        }
+        .monitor-header {
+            background: #0054a6;
+            color: white;
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .monitor-header h2 {
+            margin: 0;
+            font-size: 1rem;
+            font-weight: bold;
+            letter-spacing: 0.03em;
+        }
+        .monitor-server-time {
+            font-size: 0.82rem;
+            opacity: 0.85;
+        }
+        .monitor-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.88rem;
+        }
+        .monitor-table th {
+            background: #eef3fa;
+            color: #0054a6;
+            padding: 9px 14px;
+            text-align: left;
+            font-weight: 600;
+            border-bottom: 1px solid #d0dcea;
+        }
+        .monitor-table td {
+            padding: 9px 14px;
+            border-bottom: 1px solid #f0f0f0;
+            color: #333;
+            vertical-align: middle;
+        }
+        .monitor-table tr:last-child td { border-bottom: none; }
+        .monitor-table tr:hover td { background: #f7faff; }
+        .monitor-table tr.job-row { cursor: pointer; }
+        .monitor-table tr.job-row td:first-child::after { content: ' ▶'; font-size: 0.7rem; color: #aaa; }
+        .monitor-table tr.job-row.open td:first-child::after { content: ' ▼'; color: #0054a6; }
+        .history-row td { background: #f8faff; padding: 0 !important; }
+        .history-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+        .history-table td { padding: 6px 20px; border-bottom: 1px solid #eef0f5; color: #555; }
+        .history-table tr:last-child td { border-bottom: none; }
+        .badge-ok   { background: #e6f7ee; color: #1a7a3e; border-radius: 4px; padding: 2px 8px; font-size: 0.82rem; font-weight: 600; }
+        .badge-fail { background: #fdecea; color: #c0392b; border-radius: 4px; padding: 2px 8px; font-size: 0.82rem; font-weight: 600; }
+        .badge-none { background: #f0f0f0; color: #888;    border-radius: 4px; padding: 2px 8px; font-size: 0.82rem; }
+        .badge-running { background: #fff3cd; color: #856404; border-radius: 4px; padding: 2px 8px; font-size: 0.82rem; font-weight: 600; animation: blink 1.2s step-start infinite; }
+        @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.4} }
+        .remain-urgent  { color: #e74c3c; font-weight: 700; }
+        .remain-soon    { color: #e67e22; font-weight: 600; }
+        .remain-normal  { color: #555; }
+        
+    </style>
+    <script>
+        // ── 모니터링 패널 ───────────────────────────────────────────
+        function fmtRemain(sec) {
+            if (sec === null || sec === undefined) return '<span class="badge-none">-</span>';
+            const h = Math.floor(sec / 3600);
+            const m = Math.floor((sec % 3600) / 60);
+            const label = h > 0 ? `${h}시간 ${m}분 후` : `${m}분 후`;
+            if (sec < 3600)       return `<span class="remain-urgent">${label}</span>`;
+            else if (sec < 14400) return `<span class="remain-soon">${label}</span>`;
+            else                  return `<span class="remain-normal">${label}</span>`;
+        }
+        function fmtStatus(s) {
+            if (!s) return '<span class="badge-none">미실행</span>';
+            if (s.startsWith('✅')) return `<span class="badge-ok">${s}</span>`;
+            return `<span class="badge-fail">${s}</span>`;
+        }
+
+        async function toggleHistory(name, jobRow) {
+            const existingRow = document.getElementById(`hist-row-${name}`);
+            if (existingRow) {
+                existingRow.remove();
+                jobRow.classList.remove('open');
+                return;
+            }
+            jobRow.classList.add('open');
+            const res = await fetch(`/api/history/${name}`);
+            const data = await res.json();
+            const histRow = document.createElement('tr');
+            histRow.id = `hist-row-${name}`;
+            histRow.className = 'history-row';
+            if (!data.history || data.history.length === 0) {
+                histRow.innerHTML = `<td colspan="5"><table class="history-table"><tr><td style="color:#aaa;">실행 이력 없음</td></tr></table></td>`;
+            } else {
+                let rows = data.history.map((h, i) => `
+                    <tr>
+                        <td style="width:30px;text-align:center;color:#bbb;">${i+1}</td>
+                        <td style="width:160px;">${h.time}</td>
+                        <td>${fmtStatus(h.status)}</td>
+                    </tr>`).join('');
+                histRow.innerHTML = `<td colspan="5"><table class="history-table">${rows}</table></td>`;
+            }
+            jobRow.insertAdjacentElement('afterend', histRow);
+        }
+
+        async function loadStatus() {
+            try {
+                const res = await fetch('/api/status');
+                if (!res.ok) return;
+                const data = await res.json();
+                const mode = data.server_mode || 'prod';
+                const modeBadge = mode === 'test'
+                    ? '<span style="background:#ffc107;color:#333;border-radius:4px;padding:1px 8px;font-size:0.78rem;font-weight:600;margin-left:8px;">TEST</span>'
+                    : '<span style="background:#28a745;color:#fff;border-radius:4px;padding:1px 8px;font-size:0.78rem;font-weight:600;margin-left:8px;">PROD</span>';
+                document.getElementById('monitor-server-time').innerHTML = data.server_time + ' 기준' + modeBadge;
+                const badge = document.getElementById('server-badge');
+                if (badge) badge.innerHTML = `🖥️ ${data.server_name || 'RPA Server'}<span>${data.server_ip || ''}</span>`;
+                const tbody = document.getElementById('monitor-tbody');
+                // 펼쳐진 history는 유지
+                const openNames = new Set([...tbody.querySelectorAll('tr.job-row.open')].map(r => r.dataset.name));
+                tbody.innerHTML = '';
+                for (const j of data.jobs) {
+                    const tr = document.createElement('tr');
+                    tr.className = 'job-row' + (openNames.has(j.name) ? ' open' : '');
+                    tr.dataset.name = j.name;
+                    tr.innerHTML = `
+                        <td><strong>${j.name}</strong></td>
+                        <td>${j.next_run || '-'}</td>
+                        <td>${fmtRemain(j.remaining_sec)}</td>
+                        <td>${j.running ? '<span class="badge-running">⏳ 실행 중</span>' : (j.last_time || '<span class="badge-none">-</span>')}</td>
+                        <td>${j.running ? '<span class="badge-running">▶ Running</span>' : fmtStatus(j.last_status)}</td>
+                    `;
+                    tr.addEventListener('click', () => toggleHistory(j.name, tr));
+                    tbody.appendChild(tr);
+                    // 이전에 펼쳐졌던 항목은 다시 펼침
+                    if (openNames.has(j.name)) toggleHistory(j.name, tr);
+                }
+            } catch(e) { /* 서버 미연결 시 무시 */ }
+        }
+        loadStatus();
+        setInterval(loadStatus, 300000);
+
+        async function runDailyReportAutoMail() {
+            const emailInput = document.getElementById('targetEmail');
+            const email = emailInput.value.trim();
+            const logContainer = document.getElementById('log-container');
+
+            logContainer.innerHTML = "Connecting to server...<br>";
+            logContainer.style.display = "block";
+
+            const url = `/run/daily_report_automail/stream?extra_email=${encodeURIComponent(email)}`;
+            try {
+                const response = await fetch(url);
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buf = '';
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    buf += decoder.decode(value, { stream: true });
+                    const lines = buf.split('\n');
+                    buf = lines.pop();
+                    for (const line of lines) {
+                        if (!line.startsWith('data:')) continue;
+                        const text = line.slice(5).trim();
+                        if (!text) continue;
+                        const div = document.createElement('div');
+                        div.textContent = text;
+                        logContainer.appendChild(div);
+                        logContainer.scrollTop = logContainer.scrollHeight;
+                        if (text.includes('Done.') || text.includes('❌ Error')) {
+                            reader.cancel();
+                            alert('Process Finished.');
+                            return;
+                        }
+                    }
+                }
+                alert('Process Finished.');
+            } catch(e) {
+                const div = document.createElement('div');
+                div.style.color = 'red';
+                div.textContent = '⚠️ Connection error: ' + e;
+                logContainer.appendChild(div);
+            }
+        }
+    </script>
+</head>
+<body>
+    <h1>HL Mando RPA Service Portal</h1>
+    <div class="server-badge" id="server-badge">🖥️ 로딩 중...</div>
+
+    <!-- 모니터링 패널 -->
+    <div class="monitor-panel">
+        <div class="monitor-header">
+            <h2>🔍 Schedule Monitor</h2>
+            <div style="display:flex;align-items:center;gap:6px;">
+                <span class="monitor-server-time" id="monitor-server-time">로딩 중...</span>
+            </div>
+        </div>
+        <table class="monitor-table">
+            <thead>
+                <tr>
+                    <th>Job</th>
+                    <th>다음 실행 예정</th>
+                    <th>남은 시간</th>
+                    <th>마지막 실행</th>
+                    <th>실행 결과</th>
+                </tr>
+            </thead>
+            <tbody id="monitor-tbody">
+                <tr><td colspan="5" style="color:#aaa;text-align:center;padding:20px;">로딩 중...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="grid">
+        <div class="card" onclick="location.href='/view/daily_report'">
+            <h3>Daily Production Report</h3>
+            <p>Directly view the daily production report from the site.</p>
+        </div>
+        <div class="card">
+            <h3>Daily Report Auto Mail Dispatch</h3>
+            <p>Send Report by email to the person in charge.</p>
+            <div class="input-group" style="display: flex;">
+                <input type="email" id="targetEmail" placeholder="Enter additional recipient email" style="width: 70%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                <button onclick="runDailyReportAutoMail()" style="margin-left: 3px; width: 30%; padding: 10px; background-color: #0054a6; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                    Send
+                </button>
+            </div>
+            <div id="log-container" style="margin-top:15px; background:#222; color:#0f0; padding:10px; border-radius:5px; font-family:monospace; font-size:12px; height:150px; overflow-y:auto; text-align:left; display:none;">
+            </div>
+        </div>
+    </div>
+</body>
+</html>

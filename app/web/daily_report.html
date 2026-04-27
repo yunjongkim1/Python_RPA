@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Daily Production Report | HL Mando</title>
+    <style>
+        :root {
+            --mando-blue: #0054a6;
+            --bg-color: #f0f2f5;
+        }
+        body { 
+            font-family: 'Malgun Gothic', sans-serif; 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            height: 100vh; 
+            background-color: var(--bg-color); 
+            margin: 0; 
+        }
+        .container { 
+            background: white; 
+            padding: 2.5rem; 
+            border-radius: 15px; 
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1); 
+            width: 380px; 
+            position: relative; /* 이전 버튼 배치를 위해 */
+        }
+        /* 이전 버튼 스타일 */
+        .nav-header {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+        }
+        .back-link {
+            text-decoration: none;
+            color: var(--mando-blue);
+            font-size: 0.85rem;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            transition: 0.2s;
+        }
+        .back-link:hover {
+            color: #003d7a;
+            transform: translateX(-3px);
+        }
+
+        h2 { 
+            color: var(--mando-blue); 
+            text-align: center; 
+            margin: 1rem 0 2rem 0;
+            font-size: 1.5rem;
+            border-bottom: 2px solid var(--mando-blue);
+            padding-bottom: 0.5rem;
+        }
+        .form-group { margin-bottom: 1.2rem; }
+        label { 
+            display: block; 
+            margin-bottom: 0.5rem; 
+            font-weight: bold; 
+            font-size: 0.9rem; 
+            color: #333;
+        }
+        input, select { 
+            width: 100%; 
+            padding: 0.8rem; 
+            border: 1px solid #ccc; 
+            border-radius: 8px; 
+            box-sizing: border-box; 
+            font-size: 1rem;
+        }
+        input:focus, select:focus {
+            outline: none;
+            border-color: var(--mando-blue);
+        }
+        button { 
+            width: 100%; 
+            padding: 1rem; 
+            background-color: var(--mando-blue); 
+            color: white; 
+            border: none; 
+            border-radius: 8px; 
+            font-size: 1.1rem; 
+            font-weight: bold;
+            cursor: pointer; 
+            transition: all 0.3s ease; 
+            margin-top: 1rem; 
+        }
+        button:hover { 
+            background-color: #003d7a; 
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+        .footer { 
+            text-align: center; 
+            font-size: 0.75rem; 
+            color: #999; 
+            margin-top: 2rem; 
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="nav-header">
+        <a href="/" class="back-link">◀ 메인 포털로</a>
+    </div>
+
+    <h2>Daily Prod Report Direct</h2>
+    
+    <div class="form-group">
+        <label>Work Date</label>
+        <input type="date" id="workDate">
+    </div>
+
+    <div class="form-group">
+        <label>Sub Plant</label>
+        <input type="text" id="subPlant" value="31111">
+    </div>
+
+    <div class="form-group">
+        <label>Shift</label>
+        <select id="shift">
+            <option value="A" selected>Shift A</option>
+            <option value="B">Shift B</option>
+            <option value="C">Shift C</option>
+        </select>
+    </div>
+
+    <button onclick="openDailyProdReport()">Print</button>
+
+    <div class="footer">
+        HL Mando GMES Automation Support<br>
+        <small id="currentHost"></small>
+    </div>
+</div>
+
+<script>
+    // 1. 초기 날짜 설정: 오전(12시 전)이면 어제, 오후면 오늘
+    const now = new Date();
+    const workDateInput = document.getElementById('workDate');
+    document.getElementById('currentHost').innerText = window.location.host;
+
+    if (now.getHours() < 12) {
+        const yesterday = new Date(now);
+        yesterday.setDate(now.getDate() - 1);
+        workDateInput.valueAsDate = yesterday;
+    } else {
+        workDateInput.valueAsDate = now;
+    }
+
+    // 2. 리포트 호출 함수
+    function openDailyProdReport() {
+        const dateValue = workDateInput.value; 
+        
+        if(!dateValue) {
+            alert("작업 일자를 선택해주세요.");
+            return;
+        }
+
+        const work_date = dateValue.replace(/-/g, ''); 
+        const shift = document.getElementById('shift').value;
+        const sub_plant = document.getElementById('subPlant').value;
+        
+        const dateParts = dateValue.split('-');
+        const s_day = `${dateParts[1]}/${dateParts[2]}/${dateParts[0]}`;
+
+        // API 경로 (rpa_server.py에 등록된 경로와 일치해야 함)
+        const apiUrl = `/report/daily_prod_report_direct?work_date=${work_date}&shift=${shift}&sub_plant=${sub_plant}&s_day=${s_day}&direct=true`;
+
+        // 새 창에서 리포트 실행
+        window.open(apiUrl, '_blank');
+    }
+</script>
+
+</body>
+</html>
