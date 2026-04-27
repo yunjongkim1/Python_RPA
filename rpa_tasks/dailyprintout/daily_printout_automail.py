@@ -122,16 +122,13 @@ def main():
     final_pdf_files = []
     subject = f"[{work_date}] GMES Daily Production Report Automail"
 
-    # 2. 외부 인자(add_email) 처리 로직 추가 ★
+    # 2. 외부 인자 처리: 이메일만 mail_to에 추가
     if len(sys.argv) > 1:
-        log(f"sys.argv: {sys.argv}")
-        extra_email = sys.argv[1].strip()
-        # 이메일 형식(@ 포함)인 경우에만 리스트에 추가
-        if "@" in extra_email:
-            # 중복 방지를 위해 리스트에 없을 때만 추가
-            if extra_email not in mail_to:
-                mail_to.append(extra_email)
-                log(f"➕ 추가 수신자 포함됨: {extra_email}")
+        extra_arg = sys.argv[1].strip()
+        if "@" in extra_arg:
+            if extra_arg not in mail_to:
+                mail_to.append(extra_arg)
+                log(f"➕ 추가 수신자 포함됨: {extra_arg}")
 
     try:
         #1. 브라우저 실행 및 메뉴 이동
