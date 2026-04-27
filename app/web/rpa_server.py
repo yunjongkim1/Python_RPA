@@ -172,7 +172,7 @@ def _run_job_with_log(sp, name):
         env = os.environ.copy()
         env["PYTHONIOENCODING"] = "utf-8"
         env["PYTHONUTF8"] = "1"
-        cmd = make_cmd(sp)
+        cmd = make_cmd(sp, name)
         print(f"\n▶ [{name}] 시작: {' '.join(cmd)}")
         run_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         running_jobs.add(name)
@@ -222,11 +222,11 @@ def _run_job_with_log(sp, name):
             running_jobs.discard(name)
     threading.Thread(target=_stream, daemon=True).start()
 
-def make_cmd(sp):
-    """ .exe는 직접 실행, .py는 python으로 실행 """
+def make_cmd(sp, job_name=None):
+    """ .exe는 직접 실행, .py는 python으로 실행. job_name이 있으면 인자로 추가 """
     if sp.endswith(".exe"):
-        return [sp]
-    return [sys.executable, sp]
+        return [sp, job_name] if job_name else [sp]
+    return [sys.executable, sp, job_name] if job_name else [sys.executable, sp]
 
 def setup_automation_schedule():
     """
@@ -345,7 +345,8 @@ def _is_job_running(name: str) -> bool:
             try:
                 pname = (proc.info['name'] or "").lower()
                 cmdline = " ".join(proc.info['cmdline'] or []).lower()
-                if basename in pname or basename in cmdline:
+                # 잡 이름이 커맨드라인에 명확히 포함된 경우만 실행 중으로 간주
+                if (basename in pname or basename in cmdline) and name.lower() in cmdline:
                     return True
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 pass
