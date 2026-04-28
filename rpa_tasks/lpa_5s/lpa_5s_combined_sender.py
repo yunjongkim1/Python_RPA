@@ -1116,16 +1116,19 @@ def send_via_outlook(subject: str, body_html: str,
 # ══════════════════════════════════════════════════════════════════════
 
 def run(preview=False):
-    # ── Step 0: 오래된 산출물 정리 (7일 초과 LPA/5S 파일 삭제) ──────
-    cutoff = datetime.now() - timedelta(days=7)
-    for f in OUTPUT_DIR.glob("*.xls*"):
-        if any(f.name.startswith(p) for p in ("LPA_", "5S_", "KPI_")):
-            if datetime.fromtimestamp(f.stat().st_mtime) < cutoff:
-                try:
-                    f.unlink()
-                    log.info(f"[CLEAN] 삭제: {f.name}")
-                except Exception as e:
-                    log.info(f"[CLEAN] 삭제 실패: {f.name} ({e})")
+    # ── Step 0: 오래된 산출물 정리 (7일 초과 LPA/5S 파일 삭제, 로컬(C:)만) ──────
+    if str(OUTPUT_DIR).lower().startswith('c:'):
+        cutoff = datetime.now() - timedelta(days=7)
+        for f in OUTPUT_DIR.glob("*.xls*"):
+            if any(f.name.startswith(p) for p in ("LPA_", "5S_", "KPI_")):
+                if datetime.fromtimestamp(f.stat().st_mtime) < cutoff:
+                    try:
+                        f.unlink()
+                        log.info(f"[CLEAN] 삭제: {f.name}")
+                    except Exception as e:
+                        log.info(f"[CLEAN] 삭제 실패: {f.name} ({e})")
+    else:
+        log.info(f"[CLEAN] 네트워크 드라이브({OUTPUT_DIR})는 삭제하지 않음.")
 
     # ── Step 1: G-MES 자동수집 ───────────────────────────────────────
     raw_results, from_d, to_d, kpi_graphs = collect_all()
