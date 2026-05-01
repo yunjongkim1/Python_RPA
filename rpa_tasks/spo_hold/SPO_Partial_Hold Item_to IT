@@ -1,0 +1,199 @@
+import os
+import time
+import glob
+import pandas as pd
+import xlwings as xw
+import win32com.client as win32
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.action_chains import ActionChains
+from webdriver_manager.chrome import ChromeDriverManager
+from datetime import datetime
+
+# ---- [1. CONFIGURATION] ----
+URL = "https://gmes30-mcaga.hlmando.com/app/view.jsp?w2xPath=/home/login.xml"
+USER_ID = "3732324"
+PASSWORD = "wlstlr0101!"
+RECIPIENTS = "jinsik1.joo@hlcompany.com; jennifer.bearden@hlcompany.com; yigon.jung@hlcompany.com; antonio.patrick@hlcompany.com; nick.waters@hlcompany.com; "
+
+# 경로 설정 (미스터의 PC 환경)
+BASE_PATH = r"C:\Users\Jinsik Joo\Desktop\Jinsik Joo\01. Production Control\02. Regarding MBO\02. RPA\01. RPA_Jinsik"
+DOWNLOAD_PATH = os.path.join(BASE_PATH, "MES_Data") # 이전 코드의 MES_Data 폴더 방식 채택
+MASTER_FILE = os.path.join(BASE_PATH, "SPO_hold.xlsm")
+
+print("="*60)
+print("  HL Mando Inventory RPA: Final Optimized Full-Course  ")
+print("="*60)
+target_date = datetime.now().strftime("%Y%m%d")
+print(f"🗓️ 오늘 날짜로 자동 설정됨: {target_date}")
+
+# ---- [2. UTILITY FUNCTIONS] ----
+
+def clean_download_folder():
+    """이전 파일 삭제: 데이터 혼선을 막기 위해 폴더를 싹 비웁니다요!"""
+    if os.path.exists(DOWNLOAD_PATH):
+        print(f"🧹 Cleaning folder: {DOWNLOAD_PATH}")
+        for f in os.listdir(DOWNLOAD_PATH):
+            try:
+                file_path = os.path.join(DOWNLOAD_PATH, f)
+                if os.path.isfile(file_path):
+                    os.unlink(file_path)
+            except Exception as e:
+                print(f"⚠️ Error deleting {f}: {e}")
+    else:
+        os.makedirs(DOWNLOAD_PATH)
+
+def get_driver():
+    """크롬 드라이버 설정: 다운로드 경로를 MES_Data로 고정합니다요!"""
+    options = Options()
+    options.add_experimental_option("detach", True)
+    # 다운로드 자동 수락 및 경로 설정
+    prefs = {
+        "download.default_directory": DOWNLOAD_PATH,
+        "profile.default_content_setting_values.multiple_downloads": 1,
+        "download.prompt_for_download": False 
+    }
+    options.add_experimental_option("prefs", prefs)
+    return webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+
+# ---- [3. RPA OPERATION] ----
+
+def navigate_and_download(driver):
+    wait = WebDriverWait(driver, 40)
+    try:
+        # 로그인
+        driver.get(URL)
+        wait.until(EC.presence_of_element_located((By.ID, "txtUSER_ID"))).send_keys(USER_ID)
+        wait.until(EC.presence_of_element_located((By.ID, "txtPWD"))).send_keys(PASSWORD + Keys.RETURN)
+        
+        # 메뉴 이동
+        wait.until(EC.element_to_be_clickable((By.ID, "btn_nav02"))).click() # SCL
+        time.sleep(2)
+        wait.until(EC.element_to_be_clickable((By.XPATH, "//div[contains(@title, 'Inventory Mgmt.')]"))).click()
+        time.sleep(1)
+        wait.until(EC.element_to_be_clickable((By.XPATH, "//div[contains(@title, 'Inventory Status Display')]"))).click()
+        
+        time.sleep(5)
+        # 아이프레임 전환
+        iframes = driver.find_elements(By.TAG_NAME, "iframe")
+        for frame in iframes:
+            driver.switch_to.frame(frame)
+            if len(driver.find_elements(By.ID, "btnMainSearch")) > 0: break
+            driver.switch_to.default_content()
+
+        # 검색 조건 설정
+        print(f"🗓️ Setting Date: {target_date}")
+        driver.execute_script("document.getElementById('rdoArragement_input_1').click();") # Ref. Time 선택
+        time.sleep(1)
+        driver.execute_script("document.getElementById('ipcPlanDt_input').value = arguments[0];", target_date)
+        
+        # [미스터의 요청] 첫 번째 시트 생략하고 바로 'Bar ID Item Qty' 탭으로 이동!
+        print("📑 Moving to 'Bar ID Item Qty' tab...")
+        wait.until(EC.element_to_be_clickable((By.XPATH, "//a[@title='Bar ID Item  Qty']"))).click()
+        time.sleep(3)
+        
+        # MFG Date 체크박스 해제
+        driver.execute_script("document.getElementById('chkPeriod_input_0').checked = false;")
+        
+        # 인쿼리 및 다운로드
+        print("🔍 Clicking Inquiry & Waiting for 60s...")
+        driver.execute_script("document.getElementById('btnMainSearch').click();")
+        time.sleep(60) # 대용량 데이터 대기
+        
+        print("📥 Downloading Excel (Grid4)...")
+        driver.execute_script("document.getElementById('btnGrid4ExcelDownload').click();")
+        
+        # 파일 저장 팝업 대응 (엔터 연타)
+        time.sleep(5)
+        ActionChains(driver).send_keys(Keys.ENTER).perform()
+        time.sleep(10) # 다운로드 완료 대기
+        
+        return True
+    except Exception as e:
+        print(f"❌ RPA Download Error: {e}")
+        return False
+
+# ---- [4. EXCEL & EMAIL PROCESS] ----
+
+def process_excel_and_email():
+    # 최신 파일 1개 찾기 (Bar_qty 전용)
+    search_pattern = os.path.join(DOWNLOAD_PATH, "*.xls*")
+    files = sorted(glob.glob(search_pattern), key=os.path.getmtime, reverse=True)
+
+    if not files:
+        print("❌ Error: No excel file found in MES_Data!")
+        return
+
+    latest_file = files[0]
+    print(f"📊 Processing file: {os.path.basename(latest_file)}")
+
+    try:
+        # 데이터 이식
+        df_bar = pd.read_excel(latest_file)
+        app = xw.App(visible=True, add_book=False)
+        wb = app.books.open(MASTER_FILE)
+        
+        ws_bar_raw = wb.sheets["Bar_qty_raw"]
+        ws_bar_raw.clear_contents()
+        ws_bar_raw.range("A1").value = df_bar
+
+        # VBA 매크로 실행 (미스터의 최종 성공 버전!)
+        print("⚙️ Running VBA: Refresh_And_Filter_SPO_G1...")
+        app.api.Run("Refresh_And_Filter_SPO_G1")
+        time.sleep(3)
+        wb.save()
+
+        # 메일 발송
+        print("📧 Creating Email Report...")
+        outlook = win32.Dispatch('outlook.application')
+        mail = outlook.CreateItem(0)
+        mail.To = RECIPIENTS
+        mail.Subject = f"[RPA Report] {target_date} Inventory Status"
+        
+        mail.Display()
+        time.sleep(2)
+        
+        inspector = mail.GetInspector
+        word_editor = inspector.WordEditor
+        word_range = word_editor.Application.Selection
+        
+        word_range.Text = f"Here is the report for {target_date}. \n\n RPA may not be accurate. Please double-check via MES and use for only reference.  \n\n"
+        word_range.Collapse(0)
+
+        # 이미지 캡처 이식
+        ws_spo = wb.sheets["SPO in G1"]
+        ws_spo.activate()
+        
+        # SPO Pivot 캡처
+        ws_spo.range("B1:D25").api.CopyPicture(Appearance=1, Format=2)
+        word_range.InsertAfter("1. SPO in G1 Summary (ASP/Loc)\n")
+        word_range.Collapse(0)
+        word_range.Paste()
+        word_range.InsertAfter("\n\n---\n\n")
+        word_range.Collapse(0)
+
+        # Hold Pivot 캡처
+        ws_spo.range("H1:J35").api.CopyPicture(Appearance=1, Format=2)
+        word_range.InsertAfter("2. Hold Item (Y)\n")
+        word_range.Collapse(0)
+        word_range.Paste()
+        mail.Send() # 필요시 주석 해제
+
+        print("✅ Process Completed Successfully!")
+
+    except Exception as e:
+        print(f"❌ 가공 에러: {e}")
+
+# ---- [MAIN EXECUTION] ----
+if __name__ == "__main__":
+    clean_download_folder() # 시작 전 폴더 청소!
+    driver = get_driver()
+    if navigate_and_download(driver):
+        driver.quit()
+        process_excel_and_email()
+        

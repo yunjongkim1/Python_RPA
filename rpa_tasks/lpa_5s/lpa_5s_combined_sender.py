@@ -1,5 +1,4 @@
-﻿# -*- coding: utf-8 -*-
-"""
+﻿"""
 lpa_5s_combined_sender.py
 ────────────────────────────────────────────────────────────────────────────
 G-MES에서 LPA + 5S 실적을 각각 두 플랜트(31111, 31311)씩 수집하여
@@ -25,24 +24,60 @@ G-MES에서 LPA + 5S 실적을 각각 두 플랜트(31111, 31311)씩 수집하�
   python lpa_5s_combined_sender.py --preview    # Outlook 미리보기 (발송 안 함)
   python lpa_5s_combined_sender.py --no-attach  # 첨부파일 없이 발송
 ────────────────────────────────────────────────────────────────────────────
+
+G-MES에서 LPA + 5S 실적을 각각 두 플랜트(31111, 31311)씩 수집하여
+달성률 100% 미만 항목을 하나의 이메일로 Outlook 자동 발송
+
+수집 순서 (총 4회):
+    1. LPA  – Plant 31111 (Alabama Plant #1)
+    2. LPA  – Plant 31311 (Alabama Plant #2)
+    3. 5S   – Plant 31111 (Alabama Plant #1)
+    4. 5S   – Plant 31311 (Alabama Plant #2)
+
+이메일 구조:
+    [전체 요약]
+    ── LPA ──────────────────────────
+        🏭 Plant 31111
+        🏭 Plant 31311
+    ── 5S ───────────────────────────
+        🏭 Plant 31111
+        🏭 Plant 31311
+
+사용법:
+    python lpa_5s_combined_sender.py              # G-MES 자동수집 + 발송
+    python lpa_5s_combined_sender.py --preview    # Outlook 미리보기 (발송 안 함)
+    python lpa_5s_combined_sender.py --no-attach  # 첨부파일 없이 발송
+────────────────────────────────────────────────────────────────────────────
 """
 
-import os
-import sys
-import time
-import shutil
-import logging
+# === Standard Library Imports ===
 import argparse
+import logging
+import os
+import shutil
+import sys
 import textwrap
+import time
 from datetime import date, datetime, timedelta
 from pathlib import Path
+
+# === Third-Party Imports ===
+import pandas as pd
 from dotenv import load_dotenv
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.action_chains import ActionChains
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
 
 # .env 로드 (PROJECT_ROOT 등 경로 설정에 필요하므로 로거보다 먼저 로드)
 _ENV_FILE = Path(__file__).resolve().parent / "lpa_5s_combined_sender.env"
 _env_missing = not _ENV_FILE.exists()
 if not _env_missing:
-    load_dotenv(_ENV_FILE, override=True)
+        load_dotenv(_ENV_FILE, override=True)
 
 # ── 로거 설정 (LOG_DIR 기반) ────────────────────────────────────────
 _PROJECT_ROOT = Path(os.getenv("PROJECT_ROOT", str(Path(__file__).resolve().parent)))
@@ -51,28 +86,18 @@ _LOG_DIR.mkdir(parents=True, exist_ok=True)
 _LOG_FILE = _LOG_DIR / f"lpa_5s_{datetime.now().strftime('%Y%m%d')}.log"
 
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-    handlers=[
-        logging.FileHandler(_LOG_FILE, encoding="utf-8"),
-        logging.StreamHandler(sys.stdout),
-    ],
+        level=logging.INFO,
+        format="%(asctime)s %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        handlers=[
+                logging.FileHandler(_LOG_FILE, encoding="utf-8"),
+                logging.StreamHandler(sys.stdout),
+        ],
 )
 log = logging.getLogger(__name__)
 
 if _env_missing:
-    log.warning(f"[WARN] .env 파일 없음: {_ENV_FILE}")
-
-import pandas as pd
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.common.action_chains import ActionChains
-from selenium.webdriver.common.keys import Keys
+        log.warning(f"[WARN] .env 파일 없음: {_ENV_FILE}")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -1312,6 +1337,7 @@ def main():
               python lpa_5s_combined_sender.py --no-attach  # 첨부파일 없이 발송
         """)
     )
+    parser.add_argument("job_name", nargs="?", default=None, help="(내부용) 잡 이름 인자 무시")
     parser.add_argument("--preview",   action="store_true",
                         help="Outlook 미리보기 창 열기 (발송 안 함)")
 

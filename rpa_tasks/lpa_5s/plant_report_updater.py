@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 plant_report_updater.py
 ────────────────────────────────────────────────────────────────────────────
@@ -14,22 +13,31 @@ Rates 시트의 SUMIFS 수식이 자동으로 재계산되도록 저장.
   output/Plant_Mobile_Audit_Report_YYYYMMDD.xlsx
 ────────────────────────────────────────────────────────────────────────────
 """
-
-import argparse
-import os
 import sys
+import os
+import argparse
 import shutil
 import subprocess
-from datetime import date, datetime
-from pathlib import Path
-
-from dotenv import load_dotenv
 import pandas as pd
 import openpyxl
+
+from datetime import datetime
+from pathlib import Path
+from dotenv import load_dotenv
 from openpyxl import load_workbook
 
 # lpa_5s_combined_sender.env 로드
 load_dotenv(Path(__file__).parent / 'lpa_5s_combined_sender.env')
+
+
+# 프로젝트 루트 경로를 sys.path에 추가 (core import 전에 반드시 필요)
+_PROJECT_ROOT = str(Path(__file__).resolve().parent.parent.parent)
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
+
+# === Core RPA 표준 함수 ===
+from core.common_fn import (log, safe_filename)
+
 
 # ══════════════════════════════════════════════════════════════════════
 # ▌ 설정
@@ -41,7 +49,7 @@ _project_root = Path(os.getenv("PROJECT_ROOT", str(Path(__file__).parent)))
 TEMPLATE_PATH = Path(os.getenv("TEMPLATE_PATH", str(_project_root / "31111 Plant_Mobile_Audit_Report.xlsx")))
 
 # 출력 폴더
-OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR", str(_project_root / "output")))
+OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR_PRIMARY", str(_project_root / "output")))
 
 # LibreOffice 경로 (수식 재계산용, 없으면 Excel에서 열 때 자동 계산)
 LIBREOFFICE_PATH = os.getenv("LIBREOFFICE_PATH", r"C:\Program Files\LibreOffice\program\soffice.exe")
@@ -57,14 +65,14 @@ def load_raw(filepath: Path, sheet_type: str) -> pd.DataFrame:
     헤더 행 자동 탐색.
     """
     filepath = Path(filepath)
-    print(f"[LOAD] {sheet_type}: {filepath.name}")
+    log(f"[LOAD] {sheet_type}: {filepath.name}")
 
     key_col = "Implementation Rate"
     for header_row in range(10):
         df = pd.read_excel(filepath, header=header_row, dtype=str)
         df.columns = [str(c).strip() for c in df.columns]
         if key_col in df.columns:
-            print(f"[LOAD] 헤더 행 {header_row} 확정")
+            log(f"[LOAD] 헤더 행 {header_row} 확정")
             df = df.dropna(how="all")
             return df
 
@@ -119,7 +127,7 @@ def write_sheet(wb: openpyxl.Workbook, sheet_name: str, df: pd.DataFrame):
                 except (ValueError, TypeError):
                     ws.cell(row=row_idx, column=col_idx, value=str(value).strip())
 
-    print(f"[WRITE] {sheet_name} 시트: {len(df)}행 작성 완료")
+    log(f"[WRITE] {sheet_name} 시트: {len(df)}행 작성 완료")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -130,10 +138,10 @@ def recalc_with_libreoffice(filepath: Path) -> bool:
     """LibreOffice headless로 파일 열고 저장 → 수식 재계산"""
     lo = Path(LIBREOFFICE_PATH)
     if not lo.exists():
-        print(f"[RECALC] LibreOffice 없음 → Excel에서 열면 자동 계산됩니다.")
+        log(f"[RECALC] LibreOffice 없음 → Excel에서 열면 자동 계산됩니다.")
         return False
 
-    print(f"[RECALC] LibreOffice로 수식 재계산 중...")
+    log(f"[RECALC] LibreOffice로 수식 재계산 중...")
     cmd = [
         str(lo), "--headless", "--invisible",
         "--convert-to", "xlsx",
@@ -143,10 +151,10 @@ def recalc_with_libreoffice(filepath: Path) -> bool:
     try:
         subprocess.run(cmd, timeout=60, check=True,
                        capture_output=True)
-        print(f"[RECALC] 완료")
+        log(f"[RECALC] 완료")
         return True
     except Exception as e:
-        print(f"[RECALC] 실패 (무시 가능): {e}")
+        log(f"[RECALC] 실패 (무시 가능): {e}")
         return False
 
 
@@ -161,7 +169,7 @@ def capture_rates_sheet(xlsx_path: Path) -> str | None:
     이미지 대신 HTML 테이블 사용 → 용량 최소화, 가독성 향상.
     """
     import time
-    print("[TABLE] Rates 시트 HTML 테이블 생성 시작...")
+    log("[TABLE] Rates 시트 HTML 테이블 생성 시작...")
 
     excel = None
     wb    = None
@@ -356,11 +364,11 @@ def capture_rates_sheet(xlsx_path: Path) -> str | None:
         html_parts.append('</table>')
 
         html = '\n'.join(html_parts)
-        print(f"[TABLE] HTML 테이블 생성 완료 ({len(html):,} chars)")
+        log(f"[TABLE] HTML 테이블 생성 완료 ({len(html):,} chars)")
         return html
 
     except Exception as e:
-        print(f"[TABLE] 오류: {e}")
+        log(f"[TABLE] 오류: {e}")
         import traceback; traceback.print_exc()
         return None
     finally:
@@ -387,7 +395,7 @@ def update_report(lpa_file: Path, s5_file: Path, from_d=None, to_d=None) -> tupl
     ts       = datetime.now().strftime("%Y%m%d_%H%M%S")
     out_path = OUTPUT_DIR / f"Plant_Mobile_Audit_Report_{ts}.xlsx"
     shutil.copy2(str(TEMPLATE_PATH), str(out_path))
-    print(f"[TEMPLATE] 복사: {out_path.name}")
+    log(f"[TEMPLATE] 복사: {out_path.name}")
 
     # ── raw data 로드 ─────────────────────────────────────────────────
     df_lpa = load_raw(lpa_file, "LPA")
@@ -403,12 +411,12 @@ def update_report(lpa_file: Path, s5_file: Path, from_d=None, to_d=None) -> tupl
         if "Plan Date" in df_lpa.columns:
             mask = (df_lpa["Plan Date"] >= pd.Timestamp(from_d)) &                    (df_lpa["Plan Date"] <= pd.Timestamp(to_d))
             df_lpa = df_lpa[mask].copy()
-            print(f"[FILTER] LPA 날짜 필터: {len(df_lpa)}행")
+            log(f"[FILTER] LPA 날짜 필터: {len(df_lpa)}행")
         # 5S 필터
         if "Plan Date" in df_5s.columns:
             mask = (df_5s["Plan Date"] >= pd.Timestamp(from_d)) &                    (df_5s["Plan Date"] <= pd.Timestamp(to_d))
             df_5s = df_5s[mask].copy()
-            print(f"[FILTER] 5S 날짜 필터: {len(df_5s)}행")
+            log(f"[FILTER] 5S 날짜 필터: {len(df_5s)}행")
 
     # ── 워크북 열기 ───────────────────────────────────────────────────
     wb = load_workbook(str(out_path))
@@ -425,7 +433,7 @@ def update_report(lpa_file: Path, s5_file: Path, from_d=None, to_d=None) -> tupl
     for sheet_name in sheets_to_delete:
         if sheet_name in wb.sheetnames:
             del wb[sheet_name]
-            print(f"[DELETE] '{sheet_name}' 시트 삭제")
+            log(f"[DELETE] '{sheet_name}' 시트 삭제")
 
     # ── 시트 순서 정렬: Rates → LPA → 5S ────────────────────────────
     desired_order = ["Rates", "LPA", "5S"]
@@ -435,7 +443,7 @@ def update_report(lpa_file: Path, s5_file: Path, from_d=None, to_d=None) -> tupl
 
     # ── 저장 ──────────────────────────────────────────────────────────
     wb.save(str(out_path))
-    print(f"[SAVE] 저장 완료: {out_path.name}")
+    log(f"[SAVE] 저장 완료: {out_path.name}")
 
     # ── LibreOffice 수식 재계산 ───────────────────────────────────────
     recalc_with_libreoffice(out_path)
@@ -464,11 +472,11 @@ def main():
         s5_file  = Path(args.s5),
     )
 
-    print(f"\n✅ 완료: {out_path}")
+    log(f"\n✅ 완료: {out_path}")
     if img_b64:
-        print("✅ Rates 시트 이미지 캡처 성공")
+        log("✅ Rates 시트 이미지 캡처 성공")
     else:
-        print("ℹ️  이미지 캡처 없음 — Excel에서 파일 확인하세요.")
+        log("ℹ️  이미지 캡처 없음 — Excel에서 파일 확인하세요.")
 
 
 if __name__ == "__main__":

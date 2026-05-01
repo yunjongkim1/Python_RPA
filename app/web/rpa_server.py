@@ -1,6 +1,7 @@
 # HL Mando REST API Server
 # rpa_server.py
 
+
 import os
 import subprocess
 import sys
@@ -9,7 +10,7 @@ import psutil
 import asyncio
 import threading
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Query, Security, HTTPException, status
@@ -26,7 +27,7 @@ from pathlib import Path
 
 # rpa_server.env 파일 경로 (env 수정 시 필요)
 _ENV_FILE = Path(__file__).parent / 'rpa_server.env'
-_HISTORY_FILE = Path(__file__).parent / 'job_history.json'
+_HISTORY_FILE = Path(__file__).parent.parent.parent / 'operation' / 'job_history.json'
 
 # rpa_server.env 로드 (app/ 폴더 기준)
 load_dotenv(_ENV_FILE)
@@ -62,6 +63,7 @@ async def lifespan(app: FastAPI):
     scheduler.shutdown()
     _save_history()
     print("🛑 스케줄러가 정지되었습니다.")
+    print("재시작하려면 'Terminate batch job?' 에서 [N]을 입력하세요.")
 
 import logging
 import time
@@ -71,7 +73,7 @@ from starlette.requests import Request
 # --- [Logging] 접속 로그 설정 ---
 _log_formatter = logging.Formatter("%(asctime)s %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
 _log_file_handler = logging.FileHandler(
-    Path(__file__).parent.parent.parent / "Logs" / "access.log",
+    Path(__file__).parent.parent.parent / "operation" / "Logs" / "access.log",
     encoding="utf-8"
 )
 _log_file_handler.setFormatter(_log_formatter)
@@ -237,6 +239,10 @@ def setup_automation_schedule():
     """
     mode = os.getenv("SERVER_MODE", "prod").strip().lower()
 
+    # testall: 전체 잡 테스트, test: 1일간 성공한 적 없는 잡만 테스트
+    testall = (mode == "testall")
+    test_failed_only = (mode == "test")
+
     raw_jobs = os.getenv("JOB_AL", "")
     if not raw_jobs:
         print("   ⚠️ JOB_AL 환경변수가 설정되지 않았습니다.")
@@ -252,19 +258,42 @@ def setup_automation_schedule():
             continue
         job_lines.append(parts)  # [name, days, h, m, script_path]
 
+    # test 모드일 때 1일간 성공한 적 없는 잡만 필터링
+    if test_failed_only and job_history:
+        now = datetime.now()
+        def has_success_within_1day(name):
+            records = job_history.get(name, [])
+            for rec in records:
+                try:
+                    t = datetime.strptime(rec["time"], "%Y-%m-%d %H:%M:%S")
+                    if rec["exit_code"] == 0 and (now - t).total_seconds() <= 86400:
+                        return True
+                except Exception:
+                    continue
+            return False
+        filtered = []
+        for parts in job_lines:
+            name = parts[0]
+            if not has_success_within_1day(name):
+                filtered.append(parts)
+        print(f"   🧪 TEST 모드: 1일간 성공 기록 없는 잡만 테스트 ({[p[0] for p in filtered]})")
+        job_lines = filtered
+    elif testall:
+        print(f"   🧪 TESTALL 모드: 전체 잡 테스트")
+
     if not job_lines:
         print("   ⚠️ JOB_AL에 유효한 job이 없습니다.")
         return
 
-    # 테스트 모드: 지금 시각 + 2분 간격으로 시간 덮어쓰기
-    if mode == "test":
+    # 테스트/테스트올 모드: 지금 시각 + 2분 간격으로 시간 덮어쓰기
+    if mode in ("test", "testall"):
         now = datetime.now()
         base_total = now.hour * 60 + now.minute + 2
         time_override = {}
         for i, (name, _, h, m, _) in enumerate(job_lines):
             t = (base_total + i * 2) % (24 * 60)
             time_override[name] = (t // 60, t % 60)
-        print(f"   🧪 TEST 모드: {now.strftime('%H:%M')} 기준 2분 간격 자동 배분")
+        print(f"   🧪 {mode.upper()} 모드: {now.strftime('%H:%M')} 기준 2분 간격 자동 배분")
     else:
         time_override = {}
 

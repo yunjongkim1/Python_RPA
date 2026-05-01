@@ -62,12 +62,17 @@ def win_open(url, target_menus):
         
         wait.until(EC.visibility_of_element_located((By.ID, "navbox")))     # navbox 요소가 DOM에 존재하고 화면에 보일 때까지 대기
 
+        log("win 2-1. 로그인 완료.")
+
         # 3. 메뉴 이동 (이 부분부터 실행됨)
-        move_to_specific_menu(driver, wait, target_menus)
-        time.sleep(3)
-
-        log("win 3. 메뉴 이동 프로세스 완료.")
-
+        if target_menus:
+            move_to_specific_menu(driver, wait, target_menus)
+            time.sleep(3)
+            log("win 3. 메뉴 이동 프로세스 완료.")
+        else :
+            log("win 3-1. 메뉴 이동 필요 없음. 로그인 완료.")
+            return driver
+        
     except Exception as e:
         log(f"win 99. Windows Open작업 중 오류 발생: {e}")
     

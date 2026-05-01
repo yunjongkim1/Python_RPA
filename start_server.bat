@@ -24,13 +24,15 @@ if %EXIT_CODE% neq 0 (
     echo.
 )
 echo.
-echo   재시작하려면 "Terminate batch job?" 에서 [N] 입력
 echo ============================================
 echo   서버가 종료되었습니다.
 echo   [R] 재시작   [아무 키] 종료
 echo ============================================
 choice /c RC /n /m "선택: "
-if %errorlevel% equ 1 goto RESTART_LOOP
+if %errorlevel% equ 1 (
+    echo   서버를 재시작합니다...
+    goto RESTART_LOOP
+)
 
 echo.
 echo 서버를 종료합니다.

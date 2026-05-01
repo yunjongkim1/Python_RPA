@@ -12,8 +12,6 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
 # dailyprintout.env 로드
-# frozen(EXE) 실행 시: EXE 옆 dailyprintout.env 사용
-# 개발 실행 시: 같은 폴더 dailyprintout.env 사용
 if getattr(sys, 'frozen', False):
     _env_path = Path(sys.executable).parent / 'dailyprintout.env'
     _project_root = str(Path(sys.executable).parent.parent.parent)
@@ -22,68 +20,18 @@ else:
     _project_root = os.getenv("PROJECT_ROOT", str(Path(__file__).parent.parent.parent))
 load_dotenv(_env_path)
 
+
 # 프로젝트 루트 경로를 sys.path에 추가으켜서 core/ 모듈 임포트 가능게 설정
 if _project_root not in sys.path:
     sys.path.insert(0, _project_root)
 
+
 # core 모듈에서 공통 함수와 로깅 기능 가져오기
 from core.browser_config import win_open
-from core.common_fn import (file_rename, log, find_in_any_frame, close_alert_if_exists, check_and_close_system_alert, 
-                        set_calendar_date, wait_for_new_file, send_mail_with_attachments, get_log_for_mail)
+from core.common_fn import (log, find_in_any_frame, close_alert_if_exists, click_pdf_print_button, 
+                        set_calendar_date, send_mail_with_attachments, get_log_for_mail, safe_filename)
 
 has_error = False
-
-def click_pdf_print_button(driver, down_dir):
-    """PDF 출력 버튼 클릭 및 파일 경로 반환"""
-    #뷰어 창에서 파일을 받았는지 확인하기 위한 플래그
-    downloaded_file = None
-    global has_error
-    try:
-        #1. 새 창 전환
-        WebDriverWait(driver, 30).until(lambda d: len(d.window_handles) > 1)
-        driver.switch_to.window(driver.window_handles[-1])
-        
-        #2. 로딩 대기
-        wait = WebDriverWait(driver, 180)
-        wait.until(EC.invisibility_of_element_located((By.CLASS_NAME, "ers_progress")))
-        time.sleep(2)
-
-        #3. 데이터 없음 알림창 체크
-        if check_and_close_system_alert(driver, "데이터를 찾을 수 없습니다"):
-            has_error = False
-            return None
-
-        #4. 저장 및 PDF 버튼 클릭
-        for btn_id in ["save", "pdf"]:
-            selector = f"#crownix-toolbar-{btn_id} button"
-            wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, selector)))
-            driver.execute_script(f"document.querySelector('{selector}').click();")
-            time.sleep(1.5)
-
-        #5. 파일 다운로드 대기
-        downloaded_file = wait_for_new_file(down_dir)
-        if downloaded_file:
-            log(f"PDF 출력 성공: {os.path.basename(downloaded_file)}")
-            time.sleep(2)  #파일이 완전히 저장될 때까지 잠시 대기
-
-
-        #6. 저장 타임아웃 알림창 체크
-        if check_and_close_system_alert(driver, "타임 아웃이 발생"):
-            has_error = False
-            return None  #알림창이 발견되어 처리되었다면 스킵
-
-    except Exception as e:
-        log(f"PDF 출력 중 에러 발생: {e}")
-        has_error = True
-
-    finally:
-        #어떤 상황에서도 현재 창이 '메인 창'이 아니라면 닫고 복귀
-        if len(driver.window_handles) > 1:
-            driver.close()
-            driver.switch_to.window(driver.window_handles[0])
-            #log("메인 창으로 복귀 완료")
-            
-    return downloaded_file
 
 
 def main():
@@ -94,8 +42,8 @@ def main():
     
     global has_error
     current_hour = datetime.now().hour
-    down_dir = os.getenv("DOWNLOAD_DIR", r"C:\Users\yunjong.kim\Downloads")
-
+    down_dir = os.getenv("DOWNLOAD_DIR", r"C:\\RPA\\Download")
+    pdf_down_dir = os.getenv("PDF_DOWNLOAD_DIR", r"C:\Users\yunjong.kim\Downloads")
 
     #--- 설정 영역 ---
 #    url = os.getenv("GMES_ALDEV_URL")
@@ -117,18 +65,23 @@ def main():
     _mode = os.getenv("PRINT_MAIL_MODE", "test").upper()
     mail_to = [v.split('#')[0].strip() for k, v in sorted(os.environ.items()) if k.startswith(f"MAIL_{_mode}_TO_") and v.strip()]
     mail_cc = [v.split('#')[0].strip() for k, v in sorted(os.environ.items()) if k.startswith(f"MAIL_{_mode}_CC_") and v.strip()]
-    developer_email = [e.strip() for e in os.getenv("DEVELOPER_EMAIL_TEST", "").split(",") if e.strip()]
+    # DEVELOPER_EMAIL_1, DEVELOPER_EMAIL_2 ... 모두 읽기
+    developer_email = [v.split('#')[0].strip() for k, v in sorted(os.environ.items()) if k.startswith("DEVELOPER_EMAIL") and v.strip()]
+    
     log(f"📧 메일 모드: {_mode} | 수신자: {len(mail_to)}명 | 참조: {len(mail_cc)}명")
     final_pdf_files = []
     subject = f"[{work_date}] GMES Daily Production Report Automail"
 
-    # 2. 외부 인자 처리: 이메일만 mail_to에 추가
+    # 2. 외부 인자(add_email) 처리 로직 추가 ★
     if len(sys.argv) > 1:
-        extra_arg = sys.argv[1].strip()
-        if "@" in extra_arg:
-            if extra_arg not in mail_to:
-                mail_to.append(extra_arg)
-                log(f"➕ 추가 수신자 포함됨: {extra_arg}")
+        log(f"sys.argv: {sys.argv}")
+        extra_email = sys.argv[1].strip()
+        # 이메일 형식(@ 포함)인 경우에만 리스트에 추가
+        if "@" in extra_email:
+            # 중복 방지를 위해 리스트에 없을 때만 추가
+            if extra_email not in mail_to:
+                mail_to.append(extra_email)
+                log(f"➕ 추가 수신자 포함됨: {extra_email}")
 
     try:
         #1. 브라우저 실행 및 메뉴 이동
@@ -162,13 +115,13 @@ def main():
             try:
                 combo = find_in_any_frame(driver, By.ID, "cboSearchFactory")
                 driver.execute_script("arguments[0].click();", combo)
-                time.sleep(1) # 목록이 렌더링될 아주 짧은 시간
+                time.sleep(0.3) # 목록이 렌더링될 아주 짧은 시간
 
                 target_xpath = f"//td[contains(@id, 'cboSearchFactory_itemTable') and contains(text(), '{name}')]"
                 current_opt = WebDriverWait(driver, 5).until(EC.presence_of_element_located((By.XPATH, target_xpath)))
                 
                 driver.execute_script("arguments[0].click();", current_opt)
-                time.sleep(1) # 선택 후 화면 갱신 대기
+                time.sleep(0.3) # 선택 후 화면 갱신 대기
 
             except Exception as e:
                 log(f"공장 선택 중 오류 ({name}): {e}")
@@ -182,20 +135,28 @@ def main():
             if shift_radio:
                 driver.execute_script("arguments[0].click();", shift_radio)
                 log(f"시프트 라디오 버튼을 선택합니다. {s_name} (공장: {name})")
-                time.sleep(1) # 시프트 선택 후 화면 갱신 대기
+                time.sleep(0.3) # 시프트 선택 후 화면 갱신 대기
             else:
                 log(f"⚠️ 시프트 라디오 버튼을 찾을 수 없습니다: {s_name} (공장: {name})")
                 has_error = True
                 
             # 출력 및 이름 변경
             driver.execute_script("arguments[0].click();", btn_print)
-            raw_file = click_pdf_print_button(driver, down_dir)
-            
-            # 프린트 파일에서 자동 생성된 파일명을 일자와 공장코드로 변경
+            raw_file = click_pdf_print_button(driver, pdf_down_dir)
+            # 프린트 파일에서 자동 생성된 파일명을 일자와 공장코드로 변경하면서 RPA 다운로드 폴더로 이동
             if raw_file:
-                new_file = file_rename(raw_file, work_date, name + "_" + s_name)
-                final_pdf_files.append(new_file)
-                log(f"성공: {os.path.basename(new_file)}")
+                from shutil import move
+                from pathlib import Path
+                safe_name = safe_filename(work_date + "_" + name + "_" + s_name)
+                new_file = Path(down_dir) / (safe_name + Path(raw_file).suffix)
+                log(f"[DEBUG] move 시도: 원본={raw_file} (존재={os.path.exists(raw_file)}), 대상={new_file} (존재={os.path.exists(new_file)})")
+                try:
+                    move(raw_file, new_file)
+                    final_pdf_files.append(str(new_file))
+                    log(f"성공: {os.path.basename(new_file)}")
+                except Exception as move_err:
+                    log(f"[ERROR] 파일 이동 실패: {raw_file} → {new_file} | {move_err}")
+                    has_error = True
             else:
                 log(f"실패: {name} 리포트를 받지 못했습니다.")
                 has_error = True
@@ -218,7 +179,10 @@ def main():
                 f"Automated by RPA"
             )
             
-            send_mail_with_attachments(final_pdf_files, mail_to, mail_cc, subject, body)
+            if _mode == "TEST":
+                send_mail_with_attachments(final_pdf_files, developer_email, [], subject, body)
+            else:
+                send_mail_with_attachments(final_pdf_files, mail_to, mail_cc, subject, body)
     
     except Exception as e:
         log(f"❌ 치명적 오류: {e}")

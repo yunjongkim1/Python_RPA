@@ -135,7 +135,7 @@ def get_query_report_line(ls):
 # 2. 실행 엔진: 단일 서버 마이그레이션 수행 (10분 타임아웃)
 # ---------------------------------------------------------
 
-def run_migration(srv_config, query_funcs, timeout_limit=300):
+def run_migration(srv_config, query_funcs, timeout_limit=30):
     """ 주입받은 단일 서버 설정과 쿼리 리스트를 바탕으로 마이그레이션 수행 """
     # 설치된 드라이버 중 가장 높은 버전 자동 선택
     _available = [d for d in pyodbc.drivers() if "SQL Server" in d and "ODBC Driver" in d]
@@ -158,7 +158,7 @@ def run_migration(srv_config, query_funcs, timeout_limit=300):
             for func in query_funcs:
                 # 타임아웃 체크
                 if (time.time() - start_time) > timeout_limit:
-                    log(f"{srv_config['name']}: !!! TIMEOUT !!! 10분 초과로 해당 서버 작업 중단")
+                    log(f"{srv_config['name']}: !!! TIMEOUT !!! {timeout_limit}초 초과로 해당 서버 작업 중단")
                     has_error = True
                     return False            # 타임아웃으로 인한 중단 알림
 
@@ -210,7 +210,7 @@ def main():
     ]
 
     # 타임아웃 설정 (초 단위, 예: 600초 = 10분)
-    timeout_limit = 300
+    timeout_limit = 30
 
     # 실행할 쿼리 함수 목록 (순서대로)
     target_queries = [
@@ -223,10 +223,8 @@ def main():
 
     # 개발자 메일: DBSINK_MAIL_MODE가 test면 DEVELOPER_EMAIL_TEST만, prod면 전체
     _mode = os.getenv("DBSINK_MAIL_MODE", "test").upper()
-    if _mode == "TEST":
-        developer_email = [e.strip() for e in os.getenv("DEVELOPER_EMAIL_TEST", "").split(",") if e.strip()]
-    else:
-        developer_email = [v.split('#')[0].strip() for k, v in sorted(os.environ.items()) if k.startswith("DEVELOPER_EMAIL_") and not k.endswith("_TEST") and v.strip()]
+    # TEST/PROD 모두 DEVELOPER_EMAIL_1, 2, ...을 모두 읽음
+    developer_email = [v.split('#')[0].strip() for k, v in sorted(os.environ.items()) if k.startswith("DEVELOPER_EMAIL_") and v.strip()]
     log(f"📧 메일 모드: {_mode} | 개발자 수신자: {len(developer_email)}명")
     global has_error
     global target_date

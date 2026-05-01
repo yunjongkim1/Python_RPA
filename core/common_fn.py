@@ -1,32 +1,36 @@
+
 # common_fn.py
-
-import os, time
-import win32com.client as win32
+# 표준 라이브러리
+import os
 import sys
+import time
 import logging
+import fnmatch
+import glob
 
-# EXE 실행 시 stdout이 cp1252로 설정되는 문제 방지
-if hasattr(sys.stdout, 'reconfigure'):
-    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
-if hasattr(sys.stderr, 'reconfigure'):
-    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
-
+# 외부 라이브러리
+import win32com.client as win32
 import smtplib
-from email.message import EmailMessage
 
-from logging.handlers import RotatingFileHandler
 from pathlib import Path
+from datetime import datetime
+from email.message import EmailMessage
+from logging.handlers import RotatingFileHandler
+from dotenv import load_dotenv
 
+# selenium 관련 모듈 (옵션)
 try:
     from selenium.webdriver.common.by import By
     from selenium.webdriver.support.ui import WebDriverWait
     from selenium.webdriver.support import expected_conditions as EC
 except ImportError:
     By = WebDriverWait = EC = None
-from datetime import datetime
 
-from dotenv import load_dotenv
-from pathlib import Path
+# EXE 실행 시 stdout이 cp1252로 설정되는 문제 방지
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+if hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 
 # dailyprintout.env 로드 (rpa_tasks/dailyprintout 폴더 기준)
 load_dotenv(Path(__file__).parent.parent / 'rpa_tasks' / 'dailyprintout' / 'dailyprintout.env')
@@ -54,7 +58,7 @@ def log(message):
     
     if not logger.hasHandlers():
         # 1. 로그 경로 설정 (.env의 LOG_DIR 우선, 없으면 USERPROFILE\Downloads\logs)
-        log_dir = os.getenv("LOG_DIR") or os.path.join(os.environ['USERPROFILE'], 'Downloads', 'logs')
+        log_dir = os.getenv("LOG_DIR") or os.path.join(os.getenv("PROJECT_ROOT", "c:/RPA"), "operation", "Downloads", "logs")
         os.makedirs(log_dir, exist_ok=True)
         
         # 2. 실행파일명_날짜.log 생성
@@ -289,3 +293,109 @@ def send_smtpmail_with_attachments(attachment_paths, mail_to, mail_cc, subject, 
         print("메일 발송 완료 (SMTP)")
     except Exception as e:
         print(f"메일 발송 실패: {e}")
+
+
+# 지정한 폴더에서 date_str(YYYYMMDD) 이전에 생성된 파일을 삭제합니다.
+def clean_old_files(folder, date_str, filename_pattern=None):
+    """
+    filename_pattern이 주어지면 해당 패턴이 포함된 파일만 삭제합니다.
+    """
+
+    folder_path = Path(folder)
+    if not folder_path.exists() or not folder_path.is_dir():
+        log(f"[CLEAN] 폴더 없음: {folder}")
+        return
+
+    try:
+        base_date = datetime.strptime(date_str, "%Y%m%d")
+    except Exception as e:
+        log(f"[CLEAN] 날짜 파싱 오류: {date_str} ({e})")
+        return
+
+    for file in folder_path.iterdir():
+        if not file.is_file():
+            continue
+        # 파일명 패턴 체크
+        if filename_pattern:
+            # 와일드카드(*) 지원
+            if not fnmatch.fnmatch(file.name, filename_pattern):
+                continue
+        # 파일 생성일 체크 (Windows: st_ctime, 기타: st_mtime)
+        stat = file.stat()
+        file_time = datetime.fromtimestamp(stat.st_ctime)
+        if file_time < base_date:
+            try:
+                file.unlink()
+                log(f"[CLEAN] 삭제: {file.name} ({file_time.strftime('%Y-%m-%d %H:%M:%S')})")
+            except Exception as e:
+                log(f"[CLEAN] 삭제 실패: {file.name} ({e})")
+
+
+# Windows에서 허용하지 않는 문자 제거/대체
+def safe_filename(s):
+    return s.translate(str.maketrans({
+        ':': '_', '/': '_', '\\': '_', '?': '_', '*': '_', '"': '_', '<': '_', '>': '_', '|': '_'
+    }))
+
+# Crownix Report의 PDF 출력 버튼 클릭 및 파일 경로 반환
+def click_pdf_print_button(driver, pdf_down_dir):
+
+    #뷰어 창에서 파일을 받았는지 확인하기 위한 플래그
+    downloaded_file = None
+    global has_error
+    try:
+        #1. 새 창 전환
+        WebDriverWait(driver, 30).until(lambda d: len(d.window_handles) > 1)
+        driver.switch_to.window(driver.window_handles[-1])
+        
+        #2. 로딩 대기
+        wait = WebDriverWait(driver, 180)
+        wait.until(EC.invisibility_of_element_located((By.CLASS_NAME, "ers_progress")))
+        time.sleep(2)
+
+        #3. 데이터 없음 알림창 체크
+        if check_and_close_system_alert(driver, "데이터를 찾을 수 없습니다"):
+            has_error = False
+            return None
+
+
+        #4. 저장 및 PDF 버튼 클릭 (대기 최소화)
+        for btn_id in ["save", "pdf"]:
+            selector = f"#crownix-toolbar-{btn_id} button"
+            wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, selector)))
+            driver.execute_script(f"document.querySelector('{selector}').click();")
+            time.sleep(1.0)
+
+        #5. 파일 다운로드 대기 (최대 10초, 1초 간격 재시도)
+        max_wait = 10
+        for sec in range(max_wait):
+            pdf_files = glob.glob(os.path.join(pdf_down_dir, '*.pdf'))
+            if pdf_files:
+                downloaded_file = max(pdf_files, key=os.path.getctime)
+                log(f"PDF 다운로드 성공: {os.path.basename(downloaded_file)} (대기 {sec}s)")
+                time.sleep(1.0)  #파일이 완전히 저장될 때까지 잠시 대기
+                break
+            time.sleep(1)
+        else:
+            downloaded_file = None
+            log(f"[ERROR] PDF 다운로드 폴더에 PDF 파일이 없습니다: {pdf_down_dir}")
+
+
+        #6. 저장 타임아웃 알림창 체크
+        if check_and_close_system_alert(driver, "타임 아웃이 발생"):
+            has_error = False
+            return None  #알림창이 발견되어 처리되었다면 스킵
+
+    except Exception as e:
+        log(f"PDF 출력 중 에러 발생: {e}")
+        has_error = True
+
+    finally:
+        #어떤 상황에서도 현재 창이 '메인 창'이 아니라면 닫고 복귀
+        if len(driver.window_handles) > 1:
+            driver.close()
+            driver.switch_to.window(driver.window_handles[0])
+            #log("메인 창으로 복귀 완료")
+
+    return downloaded_file
+
