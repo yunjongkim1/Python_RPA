@@ -1,9 +1,5 @@
-# 환경변수 (민감정보 포함)
-.env
-rpa_tasks/dailyprintout/dailyprintout.env
-rpa_tasks/transportation/.env
-rpa_tasks/lpa_5s/lpa_5s_combined_sender.env
-app/web/rpa_server.env
+# 환경변수
+# (private repo이므로 .env 파일 포함)
 
 # Python 캐시
 **/__pycache__/
@@ -37,3 +33,8 @@ output/
 # 가상환경
 venv/
 .venv/
+
+# operation 폴더 - 파일 제외, 폴더 구조(.gitkeep)만 유지
+operation/**
+!operation/**/
+!operation/**/.gitkeep
